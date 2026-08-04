@@ -62,7 +62,7 @@
             // --- LOCAL STORAGE DAILY BATCH LOGIC ---
             const QUESTIONS_PER_DAY = 20;
             const todayStr = new Date().toDateString(); // e.g., "Tue Aug 04 2026"
-            let storedData = localStorage.getItem('flashcard_progress');
+            let storedData = localStorage.getItem('hindi_flashcard_progress');
             let progress = storedData ? JSON.parse(storedData) : null;
 
             // Check if we already locked in a batch for today
@@ -97,7 +97,7 @@
                     nextIndex: newIndex,
                     currentBatch: activeQueue
                 };
-                localStorage.setItem('flashcard_progress', JSON.stringify(newProgress));
+                localStorage.setItem('hindi_flashcard_progress', JSON.stringify(newProgress));
             }
             // ----------------------------------------
 
