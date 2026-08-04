@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily 20 Kannada Practice</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        h3 { margin-top: 0; color: #333; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        .prompt { font-size: 22px; font-weight: bold; color: #222; margin: 20px 0; }
+        input[type="text"] { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-bottom: 15px; }
+        button { background-color: #007bff; color: white; border: none; padding: 12px; width: 100%; font-size: 16px; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #feedback { margin-top: 15px; padding: 10px; border-radius: 4px; font-weight: bold; display: none; text-align: center; }
+        .correct { background-color: #d4edda; color: #155724; }
+        .incorrect { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h3 id="progress">Connecting to Sheet...</h3>
+    <div class="prompt" id="englishPrompt">Please wait while questions load.</div>
+    <input type="text" id="userInput" placeholder="Type Kannada translation..." autofocus autocomplete="off" style="display:none;">
+    <button id="submitBtn" onclick="checkAnswer()" style="display:none;">Submit</button>
+    <div id="feedback"></div>
+</div>
+
+<script>
+    // Configured with your specific Google Sheet ID
+    const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1QHJ37bvlw8nrx0z0JGjIK7YYJ6qjp8OJBoJaQfrVzN4/export?format=csv&gid=0';
+
+    let activeQueue = [];
+    let originalTotalCount = 0;
+    let currentIndex = 0;
+
+    async function loadSentences() {
+        try {
+            let response = await fetch(SHEET_CSV_URL);
+            let data = await response.text();
+            
+            let rows = data.split('\n').map(row => row.split(','));
+            let parsedList = [];
+            
+            for (let i = 1; i < rows.length; i++) {
+                let cols = rows[i];
+                if (cols.length >= 2 && cols[0].trim() && cols[1].trim()) {
+                    parsedList.push({
+                        english: cols[0].replace(/^"|"$/g, '').trim(),
+                        kannada: cols[1].replace(/^"|"$/g, '').trim()
+                    });
+                }
+            }
+
+            if (parsedList.length === 0) {
+                document.getElementById('progress').innerText = "Error";
+                document.getElementById('englishPrompt').innerText = "No sentences found in the Google Sheet.";
+                return;
+            }
+
+            // --- LOCAL STORAGE DAILY BATCH LOGIC ---
+            const QUESTIONS_PER_DAY = 20;
+            const todayStr = new Date().toDateString(); // e.g., "Tue Aug 04 2026"
+            let storedData = localStorage.getItem('flashcard_progress');
+            let progress = storedData ? JSON.parse(storedData) : null;
+
+            // Check if we already locked in a batch for today
+            if (progress && progress.lastDate === todayStr) {
+                activeQueue = progress.currentBatch;
+            } else {
+                // Determine next starting index, default to 0 if first time
+                let currentIndex = progress ? progress.nextIndex : 0;
+
+                // Loop back to start if we exceed the spreadsheet length
+                if (currentIndex >= parsedList.length) {
+                    currentIndex = 0;
+                }
+
+                // Slice out the next 20 questions
+                let nextBatch = parsedList.slice(currentIndex, currentIndex + QUESTIONS_PER_DAY);
+                
+                // If there are fewer than 20 left at the end, wrap around to fill the batch
+                if (nextBatch.length < QUESTIONS_PER_DAY) {
+                    let remainingNeeded = QUESTIONS_PER_DAY - nextBatch.length;
+                    nextBatch = nextBatch.concat(parsedList.slice(0, remainingNeeded));
+                }
+
+                activeQueue = nextBatch;
+
+                // Calculate the pointer position for tomorrow
+                let newIndex = (currentIndex + QUESTIONS_PER_DAY) % parsedList.length;
+
+                // Save state to local storage
+                let newProgress = {
+                    lastDate: todayStr,
+                    nextIndex: newIndex,
+                    currentBatch: activeQueue
+                };
+                localStorage.setItem('flashcard_progress', JSON.stringify(newProgress));
+            }
+            // ----------------------------------------
+
+            originalTotalCount = activeQueue.length;
+            
+            document.getElementById('userInput').style.display = 'block';
+            document.getElementById('submitBtn').style.display = 'block';
+            loadCard();
+
+        } catch (error) {
+            document.getElementById('progress').innerText = "Connection Failed";
+            document.getElementById('englishPrompt').innerText = "Could not load data from Google Sheet. Make sure the sheet is published or set to 'Anyone with the link can view'.";
+        }
+    }
+
+    function loadCard() {
+        let item = activeQueue[currentIndex];
+        let completedSoFar = originalTotalCount - activeQueue.length + 1;
+        document.getElementById('progress').innerText = `Queue Item ${completedSoFar} (Remaining: ${activeQueue.length})`;
+        document.getElementById('englishPrompt').innerText = item.english;
+        document.getElementById('userInput').value = "";
+        document.getElementById('feedback').style.display = 'none';
+        document.getElementById('userInput').focus();
+    }
+
+    document.getElementById("userInput").addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            checkAnswer();
+        }
+    });
+
+   function checkAnswer() {
+        let userTyped = document.getElementById('userInput').value.toLowerCase().replace(/\s+/g, ' ').trim();
+        let item = activeQueue[currentIndex];
+        let expected = item.kannada.toLowerCase().replace(/\s+/g, ' ').trim();
+        let feedbackDiv = document.getElementById('feedback');
+        
+        feedbackDiv.style.display = 'block';
+
+        let isCorrect = (userTyped === expected);
+
+        // Disable input and submit button while feedback is showing
+        document.getElementById('userInput').disabled = true;
+        document.getElementById('submitBtn').disabled = true;
+
+        let delayTime = 0;
+
+        if (isCorrect) {
+            feedbackDiv.className = "correct";
+            feedbackDiv.innerText = "Correct! ✅";
+            activeQueue.splice(currentIndex, 1);
+            delayTime = 1800; // 1.8 seconds for correct
+        } else {
+            feedbackDiv.className = "incorrect";
+            feedbackDiv.innerText = `Incorrect! ❌ Expected: ${item.kannada}. (Will repeat)`;
+            currentIndex++;
+            delayTime = 10000; // 10 seconds for incorrect
+        }
+
+        setTimeout(() => {
+            if (currentIndex >= activeQueue.length) {
+                currentIndex = 0;
+            }
+
+            if (activeQueue.length > 0) {
+                loadCard();
+                // Re-enable input and button for the next question
+                document.getElementById('userInput').disabled = false;
+                document.getElementById('submitBtn').disabled = false;
+            } else {
+                document.getElementById('progress').innerText = "Complete!";
+                document.getElementById('englishPrompt').innerText = "All daily sentences mastered successfully! 🎉";
+                document.getElementById('userInput').style.display = 'none';
+                document.getElementById('submitBtn').style.display = 'none';
+                feedbackDiv.style.display = 'none';
+            }
+        }, delayTime);
+    }
+
+    loadSentences();
+</script>
+
+</body>
+</html>
